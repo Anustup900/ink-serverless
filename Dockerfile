@@ -81,6 +81,7 @@ RUN mkdir -p clip_vision && \
 WORKDIR ${WORKDIR}
 COPY worker.py ${WORKDIR}/worker.py
 COPY handler.py ${WORKDIR}/handler.py
+COPY baseGraphTemplate.json /workspace/baseGraphTemplate.json
 
 # Default command
 CMD ["python", "handler.py"]
