@@ -21,6 +21,7 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git
 WORKDIR ${WORKDIR}
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
+    && pip install runpod
 
 # -------------------------
 # Install custom nodes (corrected repos)
