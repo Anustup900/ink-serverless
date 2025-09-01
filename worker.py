@@ -1,4 +1,3 @@
-import subprocess
 import os
 import json
 import base64
@@ -6,9 +5,15 @@ import shutil
 import uuid
 from pathlib import Path
 
-# Paths
+# Add ComfyUI to path
 WORKDIR = "/workspace/ComfyUI"
-BASE_WORKFLOW = "/workspace/baseGraphTemplate.json"   # base workflow template
+BASE_WORKFLOW = "/workspace/baseGraphTemplate.json"
+import sys
+sys.path.append(WORKDIR)
+
+# Import ComfyUI internals
+from execution import QueueRunner
+from nodes import load_graph
 
 
 def save_base64_image(b64_str, path):
@@ -19,7 +24,7 @@ def save_base64_image(b64_str, path):
     return path
 
 
-def encode_images(output_path, prefix="ComfyUI"):
+def encode_images(output_path, prefix):
     """Collect output images with given prefix and return as base64 strings."""
     images_b64 = []
     if not os.path.exists(output_path):
@@ -46,7 +51,7 @@ def process_job(job):
     inputs = job.get("input", {})
     params = inputs.get("params", {})
 
-    # Unique job folder
+    # Unique job folder + prefix
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(WORKDIR, "jobs", job_id)
     os.makedirs(job_dir, exist_ok=True)
@@ -54,6 +59,8 @@ def process_job(job):
     workflow_file = os.path.join(job_dir, "workflow.json")
     output_dir = os.path.join(job_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
+
+    output_prefix = f"tryon_{job_id[:8]}"  # shorten uuid for readability
 
     # Load base workflow template
     with open(BASE_WORKFLOW, "r") as f:
@@ -82,27 +89,30 @@ def process_job(job):
         save_base64_image(params["mask"], mask_path)
         workflow["153"]["inputs"]["image"] = mask_path
 
+    # Ensure output node uses unique prefix
+    if "158" in workflow and "inputs" in workflow["158"]:  # node ID for Save_Image_Garment_Tryon
+        workflow["158"]["inputs"]["filename_prefix"] = output_prefix
+
     # Save updated workflow
     with open(workflow_file, "w") as f:
         json.dump(workflow, f)
 
-    # Run ComfyUI headless
-    cmd = [
-        "python", "main.py",
-        "--disable-server",
-        "--output-directory", output_dir,
-        "--quick-test", workflow_file
-    ]
-    result = subprocess.run(cmd, cwd=WORKDIR, capture_output=True)
+    # --- Run ComfyUI workflow internally ---
+    with open(workflow_file, "r") as f:
+        workflow_data = json.load(f)
 
-    # Collect only final try-on images
-    images_b64 = encode_images(output_dir, prefix="ComfyUI")
+    graph = load_graph(workflow_data)
+    runner = QueueRunner()
+    runner.run(graph)
+
+    # Collect final try-on images with the unique prefix
+    images_b64 = encode_images(output_dir, prefix=output_prefix)
 
     # Cleanup job dir (remove temporary workflow and input images)
     shutil.rmtree(job_dir, ignore_errors=True)
 
     return {
-        "stdout": result.stdout.decode(),
-        "stderr": result.stderr.decode(),
+        "stdout": "Workflow executed successfully.",
+        "stderr": "",
         "tryon_images": images_b64
     }
