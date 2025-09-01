@@ -20,7 +20,7 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git
 # Install ComfyUI Python deps
 WORKDIR ${WORKDIR}
 RUN pip install --upgrade pip \
-    && pip install -r requirements.txt
+    && pip install -r requirements.txt \
     && pip install runpod
 
 # -------------------------
