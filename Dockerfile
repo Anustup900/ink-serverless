@@ -79,6 +79,7 @@ RUN mkdir -p clip_vision && \
 
 # Copy handler script
 WORKDIR ${WORKDIR}
+COPY worker.py ${WORKDIR}/worker.py
 COPY handler.py ${WORKDIR}/handler.py
 
 # Default command
