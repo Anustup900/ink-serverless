@@ -7,15 +7,28 @@ import requests
 import subprocess
 import time
 
+# -------------------------------------------------------------------
+# Configuration
+# -------------------------------------------------------------------
 WORKDIR = "/workspace/ComfyUI"
 BASE_WORKFLOW = "/workspace/baseGraphTemplate.json"
 COMFY_API = "http://127.0.0.1:8188"
+
+# Node ID mappings from baseGraphTemplate.json
+NODE_WIDTH = "27"       # Int
+NODE_HEIGHT = "28"      # Int
+NODE_SEED = "95"        # Seed
+NODE_HUMAN = "33"       # LoadImage
+NODE_TATTOO = "96"      # LoadImage
+NODE_MASK = "153"       # LoadImageMask
+NODE_OUTPUT = "143"     # Save_Image_Garment_Tryon
 
 # -------------------------------------------------------------------
 # Utility functions
 # -------------------------------------------------------------------
 
 def save_base64_image(b64_str, path):
+    """Decode base64 string and save to disk."""
     img_bytes = base64.b64decode(b64_str)
     with open(path, "wb") as f:
         f.write(img_bytes)
@@ -23,6 +36,7 @@ def save_base64_image(b64_str, path):
 
 
 def encode_images(output_path, prefix):
+    """Read generated images from output directory and encode as base64."""
     images_b64 = []
     if not os.path.exists(output_path):
         return images_b64
@@ -47,7 +61,7 @@ def start_comfyui_server():
         cwd=WORKDIR
     )
 
-    # Wait for server to come up
+    # Wait for server to be ready
     for _ in range(30):
         try:
             requests.get(f"{COMFY_API}/queue")
@@ -55,7 +69,6 @@ def start_comfyui_server():
         except:
             time.sleep(2)
     raise RuntimeError("ComfyUI server did not start in time!")
-
 
 # -------------------------------------------------------------------
 # Worker main job function
@@ -94,30 +107,30 @@ def process_job(job):
 
     # --- Replace mapped values ---
     if "width" in params:
-        workflow["27"]["inputs"]["value"] = params["width"]
+        workflow[NODE_WIDTH]["inputs"]["value"] = params["width"]
     if "height" in params:
-        workflow["28"]["inputs"]["value"] = params["height"]
+        workflow[NODE_HEIGHT]["inputs"]["value"] = params["height"]
     if "tryon_seed" in params:
-        workflow["95"]["inputs"]["seed"] = params["tryon_seed"]
+        workflow[NODE_SEED]["inputs"]["seed"] = params["tryon_seed"]
 
     if "human_image" in params:
         human_path = os.path.join(job_dir, "human.png")
         save_base64_image(params["human_image"], human_path)
-        workflow["33"]["inputs"]["image"] = human_path
+        workflow[NODE_HUMAN]["inputs"]["image"] = human_path
 
     if "Tattooimage" in params:
         tattoo_path = os.path.join(job_dir, "tattoo.png")
         save_base64_image(params["Tattooimage"], tattoo_path)
-        workflow["96"]["inputs"]["image"] = tattoo_path
+        workflow[NODE_TATTOO]["inputs"]["image"] = tattoo_path
 
     if "mask" in params:
         mask_path = os.path.join(job_dir, "mask.png")
         save_base64_image(params["mask"], mask_path)
-        workflow["153"]["inputs"]["image"] = mask_path
+        workflow[NODE_MASK]["inputs"]["image"] = mask_path
 
     # Ensure output node uses unique prefix
-    if "158" in workflow and "inputs" in workflow["158"]:
-        workflow["158"]["inputs"]["filename_prefix"] = output_prefix
+    if NODE_OUTPUT in workflow and "inputs" in workflow[NODE_OUTPUT]:
+        workflow[NODE_OUTPUT]["inputs"]["filename_prefix"] = output_prefix
 
     # Save updated workflow
     with open(workflow_file, "w") as f:
