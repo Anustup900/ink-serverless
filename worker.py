@@ -3,21 +3,19 @@ import json
 import base64
 import shutil
 import uuid
-from pathlib import Path
+import requests
+import subprocess
+import time
 
-# Add ComfyUI to path
 WORKDIR = "/workspace/ComfyUI"
 BASE_WORKFLOW = "/workspace/baseGraphTemplate.json"
-import sys
-sys.path.append(WORKDIR)
+COMFY_API = "http://127.0.0.1:8188"
 
-# Import ComfyUI internals
-from execution import QueueRunner
-from nodes import load_graph
-
+# -------------------------------------------------------------------
+# Utility functions
+# -------------------------------------------------------------------
 
 def save_base64_image(b64_str, path):
-    """Decode base64 string and save as an image file."""
     img_bytes = base64.b64decode(b64_str)
     with open(path, "wb") as f:
         f.write(img_bytes)
@@ -25,7 +23,6 @@ def save_base64_image(b64_str, path):
 
 
 def encode_images(output_path, prefix):
-    """Collect output images with given prefix and return as base64 strings."""
     images_b64 = []
     if not os.path.exists(output_path):
         return images_b64
@@ -37,9 +34,36 @@ def encode_images(output_path, prefix):
     return images_b64
 
 
+def start_comfyui_server():
+    """Start ComfyUI API server in background (if not already running)."""
+    try:
+        requests.get(f"{COMFY_API}/queue")
+        return  # already running
+    except requests.exceptions.ConnectionError:
+        pass
+
+    subprocess.Popen(
+        ["python", "main.py", "--listen", "0.0.0.0", "--port", "8188"],
+        cwd=WORKDIR
+    )
+
+    # Wait for server to come up
+    for _ in range(30):
+        try:
+            requests.get(f"{COMFY_API}/queue")
+            return
+        except:
+            time.sleep(2)
+    raise RuntimeError("ComfyUI server did not start in time!")
+
+
+# -------------------------------------------------------------------
+# Worker main job function
+# -------------------------------------------------------------------
+
 def process_job(job):
     """
-    Run one ComfyUI workflow job.
+    Run one ComfyUI workflow job via API.
     Expects job['input']['params'] to contain:
       - width (int)
       - height (int)
@@ -51,6 +75,9 @@ def process_job(job):
     inputs = job.get("input", {})
     params = inputs.get("params", {})
 
+    # Start ComfyUI if needed
+    start_comfyui_server()
+
     # Unique job folder + prefix
     job_id = str(uuid.uuid4())
     job_dir = os.path.join(WORKDIR, "jobs", job_id)
@@ -59,8 +86,7 @@ def process_job(job):
     workflow_file = os.path.join(job_dir, "workflow.json")
     output_dir = os.path.join(job_dir, "output")
     os.makedirs(output_dir, exist_ok=True)
-
-    output_prefix = f"tryon_{job_id[:8]}"  # shorten uuid for readability
+    output_prefix = f"tryon_{job_id[:8]}"
 
     # Load base workflow template
     with open(BASE_WORKFLOW, "r") as f:
@@ -90,29 +116,44 @@ def process_job(job):
         workflow["153"]["inputs"]["image"] = mask_path
 
     # Ensure output node uses unique prefix
-    if "158" in workflow and "inputs" in workflow["158"]:  # node ID for Save_Image_Garment_Tryon
+    if "158" in workflow and "inputs" in workflow["158"]:
         workflow["158"]["inputs"]["filename_prefix"] = output_prefix
 
     # Save updated workflow
     with open(workflow_file, "w") as f:
         json.dump(workflow, f)
 
-    # --- Run ComfyUI workflow internally ---
-    with open(workflow_file, "r") as f:
-        workflow_data = json.load(f)
+    # Submit workflow to ComfyUI API
+    resp = requests.post(f"{COMFY_API}/prompt", json={"prompt": workflow})
+    if resp.status_code != 200:
+        return {"stdout": "", "stderr": f"ComfyUI API error: {resp.text}", "tryon_images": []}
 
-    graph = load_graph(workflow_data)
-    runner = QueueRunner()
-    runner.run(graph)
+    prompt_id = resp.json().get("prompt_id")
+    if not prompt_id:
+        return {"stdout": "", "stderr": "No prompt_id returned from ComfyUI", "tryon_images": []}
 
-    # Collect final try-on images with the unique prefix
+    # Poll until finished
+    finished = False
+    for _ in range(60):  # wait up to 2 minutes
+        q = requests.get(f"{COMFY_API}/history/{prompt_id}")
+        if q.status_code == 200:
+            history = q.json()
+            if prompt_id in history:
+                finished = True
+                break
+        time.sleep(2)
+
+    if not finished:
+        return {"stdout": "", "stderr": "ComfyUI job did not finish in time", "tryon_images": []}
+
+    # Collect outputs
     images_b64 = encode_images(output_dir, prefix=output_prefix)
 
-    # Cleanup job dir (remove temporary workflow and input images)
+    # Cleanup
     shutil.rmtree(job_dir, ignore_errors=True)
 
     return {
-        "stdout": "Workflow executed successfully.",
+        "stdout": f"Workflow {prompt_id} executed successfully.",
         "stderr": "",
         "tryon_images": images_b64
     }
