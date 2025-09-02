@@ -1,12 +1,11 @@
 # Use Python 3.11.10 slim base
 FROM python:3.11.10-slim
 
-# Set env
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV WORKDIR=/workspace/ComfyUI
 
-# Install system dependencies
+# Install system deps
 RUN apt-get update && apt-get install -y \
     git wget curl unzip libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
@@ -17,17 +16,16 @@ WORKDIR /workspace
 # Clone ComfyUI
 RUN git clone https://github.com/comfyanonymous/ComfyUI.git
 
-# Install ComfyUI Python deps
+# Install dependencies
 WORKDIR ${WORKDIR}
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt \
-    && pip install runpod
+    && pip install runpod requests
 
 # -------------------------
-# Install custom nodes (corrected repos)
+# Install custom nodes
 # -------------------------
 WORKDIR ${WORKDIR}/custom_nodes
-
 RUN git clone https://github.com/kijai/comfyui-kjnodes.git \
  && git clone https://github.com/aria1th/ComfyUI-LogicUtils.git \
  && git clone https://github.com/lldacing/ComfyUI_Patches_ll.git \
@@ -37,7 +35,7 @@ RUN git clone https://github.com/kijai/comfyui-kjnodes.git \
  && git clone https://github.com/theUpsider/ComfyUI-Logic.git \
  && git clone https://github.com/cubiq/ComfyUI_essentials.git
 
-# Auto-install dependencies for all nodes
+# Install dependencies of custom nodes
 RUN for d in ${WORKDIR}/custom_nodes/*; do \
         if [ -f "$d/requirements.txt" ]; then pip install -r $d/requirements.txt; fi; \
         if [ -f "$d/requirements.in" ]; then pip install -r $d/requirements.in; fi; \
@@ -76,12 +74,15 @@ RUN mkdir -p clip_vision && \
     https://huggingface.co/f5aiteam/CLIP_VISION/resolve/ab3e0511a3c17c6a601444defc83bbf017a4f3dd/sigclip_vision_patch14_384.safetensors
 
 # -------------------------
-
-# Copy handler script
+# Copy handler + worker
+# -------------------------
 WORKDIR ${WORKDIR}
-COPY worker.py ${WORKDIR}/worker.py
-COPY handler.py ${WORKDIR}/handler.py
+COPY handler.py worker.py /workspace/ComfyUI/
 COPY baseGraphTemplate.json /workspace/baseGraphTemplate.json
 
-# Default command
-CMD ["python", "handler.py"]
+# -------------------------
+# Start ComfyUI + RunPod handler
+# -------------------------
+CMD bash -c "python main.py --listen 0.0.0.0 --port 8188 --output-directory /workspace/ComfyUI/output & \
+             sleep 5 && \
+             python handler.py"
