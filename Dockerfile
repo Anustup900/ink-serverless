@@ -81,8 +81,7 @@ COPY handler.py worker.py /workspace/ComfyUI/
 COPY baseGraphTemplate.json /workspace/baseGraphTemplate.json
 
 # -------------------------
-# Start ComfyUI + RunPod handler
+# Entrypoint (only handler.py)
+# Handler will start ComfyUI itself
 # -------------------------
-CMD bash -c "python main.py --listen 0.0.0.0 --port 8188 --output-directory /workspace/ComfyUI/output & \
-             sleep 5 && \
-             python handler.py"
+CMD ["python", "handler.py"]
