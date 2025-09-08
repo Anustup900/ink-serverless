@@ -6,6 +6,7 @@ import uuid
 import requests
 import subprocess
 import time
+from pathlib import Path
 
 # -------------------------------------------------------------------
 # Configuration
@@ -14,14 +15,14 @@ WORKDIR = "/workspace/ComfyUI"
 BASE_WORKFLOW = "/workspace/baseGraphTemplate.json"
 COMFY_API = "http://127.0.0.1:8188"
 
-# Node ID mappings from baseGraphTemplate.json
-NODE_WIDTH = "27"       # Int
-NODE_HEIGHT = "28"      # Int
+# Node ID mappings (confirmed from baseGraphTemplate.json)
+NODE_WIDTH = "27"       # Width
+NODE_HEIGHT = "28"      # Height
 NODE_SEED = "95"        # Seed
-NODE_HUMAN = "33"       # LoadImage
-NODE_TATTOO = "96"      # LoadImage
-NODE_MASK = "153"       # LoadImageMask
-NODE_OUTPUT = "143"     # Save_Image_Garment_Tryon
+NODE_HUMAN = "33"       # Load Human Image
+NODE_TATTOO = "96"      # Load Tattoo Image
+NODE_MASK = "153"       # Load Mask Image
+NODE_OUTPUT = "143"     # Save Image Output
 
 # -------------------------------------------------------------------
 # Utility functions
@@ -107,11 +108,11 @@ def process_job(job):
 
     # --- Replace mapped values ---
     if "width" in params:
-        workflow[NODE_WIDTH]["inputs"]["value"] = params["width"]
+        workflow[NODE_WIDTH]["inputs"]["value"] = int(params["width"])
     if "height" in params:
-        workflow[NODE_HEIGHT]["inputs"]["value"] = params["height"]
+        workflow[NODE_HEIGHT]["inputs"]["value"] = int(params["height"])
     if "tryon_seed" in params:
-        workflow[NODE_SEED]["inputs"]["seed"] = params["tryon_seed"]
+        workflow[NODE_SEED]["inputs"]["seed"] = int(params["tryon_seed"])
 
     if "human_image" in params:
         human_path = os.path.join(job_dir, "human.png")
